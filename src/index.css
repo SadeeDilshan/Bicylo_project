@@ -1,0 +1,349 @@
+/* --- BYCYLO: DARK CAPSULE THEME (FIXED) --- */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
+
+:root {
+    --primary-blue: #007AFF;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Inter', sans-serif;
+    background: #f0f2f5; 
+    min-height: 100vh;
+    position: relative;
+    overflow-x: hidden;
+    color: #1d1d1f;
+}
+
+.ios-glass-nav {
+    position: fixed; /* <--- MUST BE FIXED */
+    top: 25px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    width: 92%; 
+    max-width: 1100px; 
+    border-radius: 50px; 
+    
+    /* Animation for sliding */
+    transition: top 0.3s ease-in-out; 
+}
+
+/* When hidden, pull it up off the screen */
+.ios-glass-nav.nav-hidden {
+    top: -150px; 
+}
+
+body::before {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    width: 60vw;
+    height: 60vw;
+    top: -10%;
+    left: -10%;
+}
+
+body::after {
+    background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+    width: 50vw;
+    height: 50vw;
+    bottom: -10%;
+    right: -10%;
+    animation-delay: -4s;
+}
+
+@keyframes float {
+    0% { transform: translate(0, 0) rotate(0deg); }
+    100% { transform: translate(30px, 40px) rotate(5deg); }
+}
+
+/* --- DARK GLASS CAPSULE NAVBAR --- */
+.ios-glass-nav {
+    position: fixed;
+    top: 25px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    
+    width: 95%; 
+    max-width: 1100px; 
+    border-radius: 50px; 
+    
+    /* Dark Glass Background */
+    background: rgba(20, 20, 20, 0.112) !important; 
+    backdrop-filter: blur(25px) saturate(180%);
+    -webkit-backdrop-filter: blur(25px) saturate(180%);
+    
+    border: 5px solid rgba(255, 255, 255, 0.13);
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.299);
+    
+    /* PADDING FIX: Pushes logo away from the left corner */
+    padding: 20px 40px; 
+    transition: all 0.3s ease;
+    
+    min-height: 75px;
+    height: auto;
+}
+
+.navbar-brand {
+    font-size: 2rem !important;
+    font-weight: 800;
+    color: white !important;
+    padding: 10px 30px;
+    -webkit-text-stroke: 0.25px rgb(0, 0, 0) !important;
+}
+
+.text-primary { color: #0A84FF !important; }
+
+.nav-link {
+    color: rgb(0, 0, 0) !important;
+    font-weight: 500;
+    margin: 0 12px;
+    font-size: 1rem;
+    transition: color 0.2s;
+    -webkit-text-stroke: 0.5px rgb(0, 0, 0) !important;
+    
+}
+.nav-link:hover { color: #85ffff !important; }
+
+/* --- HERO SECTION (IMAGE RESTORED) --- */
+.hero-section {
+    /* Fixed: Added the image back with a white fade overlay */
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.067), rgba(255,255,255,0.8)), url('https://images.unsplash.com/photo-1560518883-ce09059eeffa?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80');
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed; /* Parallax Effect */
+    
+    height: 90vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: #1d1d1f;
+}
+
+.hero-section h1 {
+    font-size: 4.5rem;
+    color: #000;
+    /* Added text shadow so it reads well over the house image */
+    text-shadow: 0 10px 30px rgba(255,255,255,0.8); 
+}
+
+/* --- CARDS --- */
+.portals-section {
+    margin-top: -120px;
+    position: relative;
+    z-index: 10;
+    padding-bottom: 80px;
+}
+
+.ios-card {
+    background: rgba(255, 255, 255, 0.132); /* More visible glass */
+    backdrop-filter: blur(30px);
+    border: 1px solid rgba(255, 255, 255, 0.501);
+    border-radius: 30px !important;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.3s ease;
+}
+
+.ios-card:hover {
+    transform: translateY(-10px);
+    background: rgba(255, 255, 255, 0.174);
+}
+
+.ios-img-container {
+    height: 220px;
+    background-size: cover;
+    background-position: center;
+    margin: 12px;
+    border-radius: 20px;
+}
+
+.btn-ios-pill {
+    background: rgba(55, 219, 0, 0.477) !important;
+    color: rgb(255, 255, 255) !important;
+    border-radius: 50px !important;
+    padding: 10px 30px !important;
+    font-weight: 700 !important;
+    border: none;
+    margin-right: 10px !important;
+}
+.btn-ios-pill:hover {
+    background: rgba(6, 255, 10, 0.734) !important;
+    color: rgba(0, 0, 0, 0.579) !important;
+    border-radius: 50px !important;
+    font-weight: 700 !important;
+    border: none;
+}
+
+/* --- MOBILE FIXES --- */
+@media (max-width: 991px) {
+    .ios-glass-nav {
+        border-radius: 35px;
+        flex-direction: column;
+        align-items: stretch;
+        padding: 15px 25px; /* Tighter padding on phone */
+    }
+
+    .navbar-container-mobile {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+        
+    }
+
+    .navbar-collapse {
+        margin-top: 15px;
+        text-align: center;
+      
+    }
+    
+    .btn-ios-pill { width: 100%; margin-top: 10px; }
+}
+
+/* --- BOARDING PAGE STYLES --- */
+
+/* The Map Container */
+.map-container {
+    height: 400px;
+    width: 100%;
+    border-radius: 20px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+    margin-bottom: 40px;
+    border: 2px solid white;
+}
+
+/* Gold Glow for Premium Cards */
+.card-premium {
+    border: 2px solid #FFD700 !important; /* Gold Border */
+    box-shadow: 0 10px 30px rgba(255, 215, 0, 0.2) !important;
+    position: relative;
+}
+
+/* Badge for Premium */
+.premium-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: linear-gradient(45deg, #FFD700, #FFA500);
+    color: black;
+    padding: 5px 15px;
+    border-radius: 20px;
+    font-weight: 800;
+    font-size: 0.8rem;
+    z-index: 2;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+}
+
+.search-input {
+    border-radius: 50px;
+    padding: 15px 30px;
+    border: 1px solid rgba(0,0,0,0.1);
+    box-shadow: 0 5px 20px rgba(0,0,0,0.05);
+    width: 100%;
+    font-size: 1.1rem;
+    outline: none;
+    transition: all 0.3s;
+}
+
+.search-input:focus {
+    box-shadow: 0 10px 30px rgba(0, 122, 255, 0.2);
+    border-color: #007AFF;
+}
+
+/* --- TRAVELER SEARCH PILL (Airbnb Style) --- */
+.search-pill-container {
+    background: white;
+    border-radius: 50px;
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.15);
+    border: 1px solid rgba(0,0,0,0.05);
+    max-width: 850px;
+    margin: 0 auto;
+    position: relative;
+    transition: transform 0.2s;
+}
+
+.search-pill-container:hover {
+    transform: scale(1.02);
+}
+
+/* The Sections (Where, When, Who) */
+.search-section {
+    flex: 1; /* <--- UNCOMMENTED THIS: Forces sections to fill width */
+    padding: 10px 30px;
+    position: relative;
+    cursor: pointer;
+    border-radius: 30px;
+    transition: background 0.2s;
+    display: flex;       /* Added to align label/input neatly */
+    flex-direction: column;
+    justify-content: center;
+}
+
+.search-section:hover {
+    background: #f7f7f7;
+}
+
+/* The vertical divider line */
+.search-section::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 20%;
+    height: 60%;
+    width: 1px;
+    background: #ddd;
+}
+
+/* Remove the line from the last SEARCH SECTION (The 'Who' section) 
+   so it doesn't clash with the button */
+.search-section:nth-last-of-type(1)::after {
+    display: none; 
+}
+
+/* Labels & Inputs */
+.search-label {
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: #333;
+    display: block;
+    margin-bottom: 2px;
+}
+
+.search-input-transparent {
+    border: none;
+    outline: none;
+    background: transparent;
+    width: 100%;
+    font-size: 0.95rem;
+    color: #666;
+    padding: 0;
+    text-overflow: ellipsis; /* nice touch if text is too long */
+}
+
+/* The Red/Pink Search Button */
+.search-btn-round {
+    background: #FF385C;
+    color: white;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 10px; /* Space between 'Who' and Button */
+    transition: background 0.2s;
+    flex-shrink: 0; /* Prevents button from getting squished */
+}
+
+.search-btn-round:hover {
+    background: #E61E4D;
+}
