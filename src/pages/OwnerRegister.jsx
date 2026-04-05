@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import Navbar from '../components/Navbar';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../supabase';
+import imageCompression from 'browser-image-compression'; // 🚨 අලුතින් එකතු කරපු Package එක
 
 const OwnerRegister = () => {
   const navigate = useNavigate();
@@ -8,43 +10,59 @@ const OwnerRegister = () => {
 
   // --- STATE ---
   const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    nic: '', 
-    email: '',
-    phone: '',
-    address: '',
-    password: '',
-    confirmPassword: '',
-    termsAccepted: false
+    firstName: '', lastName: '', nic: '', email: '', phone: '', address: '', password: '', confirmPassword: '', termsAccepted: false
   });
 
-  const [files, setFiles] = useState({
-    idFront: null,
-    idBack: null,
-    selfie: null
-  });
-  
-  const [previews, setPreviews] = useState({
-    idFront: null,
-    idBack: null,
-    selfie: null
-  });
+  // 🚨 අලුත් States: Instant Upload සහ Compression වලට
+  const [sessionId] = useState(() => Date.now().toString());
+  const [previews, setPreviews] = useState({ idFront: null, idBack: null, selfie: null });
+  const [uploadedUrls, setUploadedUrls] = useState({ idFront: null, idBack: null, selfie: null });
+  const [uploadingImage, setUploadingImage] = useState({ idFront: false, idBack: false, selfie: false });
 
   // --- HANDLERS ---
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }));
+    setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
 
-  const handleImageChange = (e, fieldName) => {
+  // 🚨 වෙනස් කළ කොටස: Photo එක Compress කරලා Select කරපු ගමන් Upload කරනවා
+  const handleImageChange = async (e, fieldName) => {
     const file = e.target.files[0];
-    if (file) {
-      setFiles(prev => ({ ...prev, [fieldName]: file }));
-      setPreviews(prev => ({ ...prev, [fieldName]: URL.createObjectURL(file) }));
+    if (!file) return;
+
+    // 1. Preview එක පෙන්නනවා සහ Loading State එක On කරනවා
+    setPreviews(prev => ({ ...prev, [fieldName]: URL.createObjectURL(file) }));
+    setUploadingImage(prev => ({ ...prev, [fieldName]: true }));
+
+    try {
+      // 2. ෆොටෝ එක Compress කරනවා (Size එක ගොඩක් අඩු කරනවා Quality එක තියාගෙන)
+      const options = {
+        maxSizeMB: 0.5, // 500KB උපරිමය
+        maxWidthOrHeight: 1200,
+        useWebWorker: true,
+      };
+      const compressedFile = await imageCompression(file, options);
+
+      // 3. Storage එකට Upload කරනවා (upsert: true නිසා පරණ එක මැකිලා අලුත් එක වැටෙනවා)
+      const fileExt = compressedFile.name.split('.').pop() || 'jpg';
+      const fileName = `pending-registrations/${sessionId}-${fieldName}.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('owner-photos')
+        .upload(fileName, compressedFile, { upsert: true });
+      
+      if (uploadError) throw uploadError;
+      
+      // 4. URL එක අරන් State එකේ Save කරනවා
+      const { data } = supabase.storage.from('owner-photos').getPublicUrl(fileName);
+      setUploadedUrls(prev => ({ ...prev, [fieldName]: data.publicUrl }));
+
+    } catch (error) {
+      console.error("Photo upload error:", error);
+      alert("Photo upload failed. Please try again.");
+    } finally {
+      // 5. Loading State එක Off කරනවා
+      setUploadingImage(prev => ({ ...prev, [fieldName]: false }));
     }
   };
 
@@ -52,52 +70,56 @@ const OwnerRegister = () => {
     e.preventDefault();
     setLoading(true);
 
-    // 1. Basic Validation
     if (formData.password !== formData.confirmPassword) {
-      alert("Passwords do not match!");
-      setLoading(false);
-      return;
+      alert("Passwords do not match!"); setLoading(false); return;
     }
     if (!formData.termsAccepted) {
-      alert("Please accept the Terms & Conditions.");
-      setLoading(false);
-      return;
+      alert("Please accept the Terms & Conditions."); setLoading(false); return;
     }
-    if (!files.idFront || !files.idBack || !files.selfie) {
-      alert("Please upload all required verification photos.");
-      setLoading(false);
-      return;
+    // 🚨 අලුත් Check එක: ෆොටෝස් 3ම Upload වෙලා ඉවර වෙනකම් Submit වෙන්න දෙන්නේ නෑ
+    if (!uploadedUrls.idFront || !uploadedUrls.idBack || !uploadedUrls.selfie) {
+      alert("Please wait until all verification photos are uploaded!"); setLoading(false); return;
     }
 
     try {
-      // 2. Prepare Data for Node.js Backend (Multipart Form Data)
-      const data = new FormData();
-      
-      // Append Text Fields
-      data.append('firstName', formData.firstName);
-      data.append('lastName', formData.lastName);
-      data.append('email', formData.email);
-      data.append('password', formData.password);
-      data.append('phone', formData.phone);
-      data.append('address', formData.address);
-      data.append('nic', formData.nic);
-
-      // Append Files
-      data.append('idFront', files.idFront);
-      data.append('idBack', files.idBack);
-      data.append('selfie', files.selfie);
-
-      // 3. Send to Local Backend (XAMPP/Node)
-      const response = await fetch('http://localhost:5000/register', {
-        method: 'POST',
-        body: data, // Fetch automatically sets the Content-Type to multipart/form-data
+      // 1. Sign Up User via Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
       });
 
-      const result = await response.json();
+      if (authError) throw authError;
 
-      if (!response.ok) {
-        throw new Error(result.message || "Registration failed");
+      if (!authData.user) {
+          alert("This email is already registered! Please use a different email or go to Login.");
+          setLoading(false);
+          return;
       }
+      
+      const userId = authData.user.id;
+
+      // 2. Save to `users` table
+      const { error: userError } = await supabase.from('users').upsert([{
+        id: userId,
+        email: formData.email,
+        full_name: `${formData.firstName} ${formData.lastName}`,
+        phone: formData.phone,
+        role: 'owner'
+      }]);
+
+      if (userError) throw userError;
+
+      // 3. Save to `owner_applications` table (කලින් ගත්ත URLs මෙතනට දෙනවා)
+      const { error: appError } = await supabase.from('owner_applications').insert([{
+        user_id: userId,
+        phone: formData.phone,
+        status: 'pending',
+        id_front_url: uploadedUrls.idFront,
+        id_back_url: uploadedUrls.idBack,
+        selfie_url: uploadedUrls.selfie
+      }]);
+
+      if (appError) throw appError;
 
       alert("Registration Successful! Please Login.");
       navigate('/login');
@@ -113,11 +135,9 @@ const OwnerRegister = () => {
   return (
     <div style={{ minHeight: '100vh', background: '#f8f9fa' }}>
       <Navbar />
-
       <div className="container" style={{ paddingTop: '120px', paddingBottom: '80px' }}>
         <div className="row justify-content-center">
           <div className="col-lg-8">
-            
             <div className="card border-0 shadow-lg p-5" style={{ borderRadius: '30px', background: 'rgba(255,255,255,0.9)' }}>
               
               <div className="text-center mb-5">
@@ -160,7 +180,11 @@ const OwnerRegister = () => {
 
                 {/* Selfie Upload */}
                 <div className="mb-4">
-                    <label className="form-label fw-bold small">YOUR PHOTO (SELFIE)</label>
+                    <label className="form-label fw-bold small">
+                        YOUR PHOTO (SELFIE)
+                        {uploadingImage.selfie && <span className="text-primary ms-2">(Uploading...)</span>}
+                        {uploadedUrls.selfie && !uploadingImage.selfie && <span className="text-success ms-2">(Uploaded ✔️)</span>}
+                    </label>
                     <div className="d-flex align-items-center">
                         <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#eee', overflow: 'hidden', marginRight: '20px', border: '2px solid #ddd' }}>
                             {previews.selfie ? (
@@ -176,7 +200,11 @@ const OwnerRegister = () => {
                 {/* ID Card Uploads */}
                 <div className="row g-3 mb-4">
                     <div className="col-md-6">
-                        <label className="form-label fw-bold small">ID CARD (FRONT)</label>
+                        <label className="form-label fw-bold small">
+                            ID CARD (FRONT)
+                            {uploadingImage.idFront && <span className="text-primary ms-2">(Uploading...)</span>}
+                            {uploadedUrls.idFront && !uploadingImage.idFront && <span className="text-success ms-2">(Uploaded ✔️)</span>}
+                        </label>
                         <div className="card p-2 border-dashed mb-2 text-center bg-light" style={{ height: '150px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                             {previews.idFront ? (
                                 <img src={previews.idFront} alt="Front ID" style={{ maxWidth: '100%', maxHeight: '100%' }} />
@@ -186,7 +214,11 @@ const OwnerRegister = () => {
                     </div>
 
                     <div className="col-md-6">
-                        <label className="form-label fw-bold small">ID CARD (BACK)</label>
+                        <label className="form-label fw-bold small">
+                            ID CARD (BACK)
+                            {uploadingImage.idBack && <span className="text-primary ms-2">(Uploading...)</span>}
+                            {uploadedUrls.idBack && !uploadingImage.idBack && <span className="text-success ms-2">(Uploaded ✔️)</span>}
+                        </label>
                         <div className="card p-2 border-dashed mb-2 text-center bg-light" style={{ height: '150px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                             {previews.idBack ? (
                                 <img src={previews.idBack} alt="Back ID" style={{ maxWidth: '100%', maxHeight: '100%' }} />
@@ -215,7 +247,6 @@ const OwnerRegister = () => {
                     </div>
                 </div>
 
-                {/* Terms Checkbox - FIXED HREF WARNING */}
                 <div className="form-check mb-4">
                     <input className="form-check-input" type="checkbox" name="termsAccepted" id="terms" required onChange={handleInputChange} />
                     <label className="form-check-label small text-muted" htmlFor="terms">
@@ -223,7 +254,6 @@ const OwnerRegister = () => {
                     </label>
                 </div>
 
-                {/* Submit Button */}
                 <button type="submit" className="btn btn-dark w-100 rounded-pill py-3 fw-bold shadow-lg" disabled={loading}>
                     {loading ? "Creating Account..." : "Submit Application"}
                 </button>
