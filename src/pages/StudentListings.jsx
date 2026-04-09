@@ -45,7 +45,7 @@ const StudentListings = () => {
 
         if (error) {
           console.error("🚨 Supabase Error:", error.message);
-          throw error;
+          throw error ;
         } 
         
         const sortedData = (data || []).sort((a, b) => {
