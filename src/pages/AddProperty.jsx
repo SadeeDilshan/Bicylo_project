@@ -8,29 +8,29 @@ const AddProperty = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
-  // --- REFERENCE DATA STATES (Database එකෙන් ගන්න දේවල්) ---
+  // --- REFERENCE DATA STATES ---
   const [districts, setDistricts] = useState([]);
   const [cities, setCities] = useState([]);
   const [filteredCities, setFilteredCities] = useState([]);
   const [universities, setUniversities] = useState([]);
 
   // --- FORM STATES ---
-  const [plan, setPlan] = useState('basic'); // 'basic' or 'vip'
+  const [plan, setPlan] = useState('basic'); 
   const [formData, setFormData] = useState({
-    title: '', description: '', price: '', type: 'Boarding', category: 'Student', gender: 'Any',
+    title: '', description: '', price: '', type: 'Boarding Place', gender: 'Any',
     district_id: '', city_id: '', address: ''
   });
+  
+  // 🚨 UPDATED: Audiences is now an array to allow multiple selections
+  const [selectedAudiences, setSelectedAudiences] = useState(['Student']); 
   const [selectedUniversities, setSelectedUniversities] = useState([]);
 
   // --- UPLOAD STATES ---
   const [uploadedPhotos, setUploadedPhotos] = useState([]);
   const [uploadedVideo, setUploadedVideo] = useState(null);
   const [uploadingMedia, setUploadingMedia] = useState(false);
-  
-  // 🚨 අලුත් State: Video එක Upload වෙන ප්‍රතිශතය තියාගන්න
   const [videoUploadProgress, setVideoUploadProgress] = useState(0);
 
-  // 1. Component Load වෙද්දි Database එකෙන් Districts, Cities, Universities ගන්නවා
   useEffect(() => {
     const fetchReferenceData = async () => {
       const { data: distData } = await supabase.from('districts').select('*');
@@ -44,10 +44,9 @@ const AddProperty = () => {
     fetchReferenceData();
   }, []);
 
-  // 2. District එක මාරු කරද්දි අදාළ Cities ටික Filter කරනවා
   const handleDistrictChange = (e) => {
     const distId = e.target.value;
-    setFormData({ ...formData, district_id: distId, city_id: '' }); // Reset city
+    setFormData({ ...formData, district_id: distId, city_id: '' });
     const filtered = cities.filter(city => city.district_id === parseInt(distId));
     setFilteredCities(filtered);
   };
@@ -56,13 +55,20 @@ const AddProperty = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  // 🚨 NEW: Handle Multiple Audience Selections
+  const handleAudienceToggle = (audience) => {
+    setSelectedAudiences(prev => 
+      prev.includes(audience) ? prev.filter(a => a !== audience) : [...prev, audience]
+    );
+  };
+
   const handleUniversityToggle = (uniId) => {
     setSelectedUniversities(prev => 
       prev.includes(uniId) ? prev.filter(id => id !== uniId) : [...prev, uniId]
     );
   };
 
-  // 3. PHOTOS UPLOAD KIRIMA (Instant Upload + Compression)
+  // --- MEDIA UPLOAD ---
   const handlePhotoUpload = async (e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
@@ -79,12 +85,10 @@ const AddProperty = () => {
     try {
       const newUrls = [];
       for (const file of files) {
-        // Compress Image
         const compressedFile = await imageCompression(file, { maxSizeMB: 0.5, maxWidthOrHeight: 1200, useWebWorker: true });
         const fileExt = compressedFile.name.split('.').pop() || 'jpg';
         const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
         
-        // Upload to Storage
         const { error } = await supabase.storage.from('property-images').upload(fileName, compressedFile);
         if (error) throw error;
         
@@ -100,7 +104,6 @@ const AddProperty = () => {
     }
   };
 
-  // 4. VIDEO UPLOAD KIRIMA (Background Upload + Progress Bar)
   const handleVideoUpload = async (e) => {
     if (plan !== 'vip') return;
     const file = e.target.files[0];
@@ -112,7 +115,7 @@ const AddProperty = () => {
     }
 
     setUploadingMedia(true);
-    setVideoUploadProgress(10); // 🚨 Progress එක පටන් ගන්නවා
+    setVideoUploadProgress(10); 
     const { data: { user } } = await supabase.auth.getUser();
     
     let progressInterval;
@@ -121,31 +124,30 @@ const AddProperty = () => {
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}/${Date.now()}-video.${fileExt}`;
       
-      // 🚨 Simulated Progress (බොරුවට පිරෙනවා වගේ පෙන්නනවා Upload වෙනකම්)
       progressInterval = setInterval(() => {
         setVideoUploadProgress(prev => (prev < 90 ? prev + 10 : prev));
       }, 500);
 
       const { error } = await supabase.storage.from('property-images').upload(fileName, file);
       
-      clearInterval(progressInterval); // 🚨 Upload ඉවර වුණාම නවත්වනවා
+      clearInterval(progressInterval); 
 
       if (error) throw error;
       
-      setVideoUploadProgress(100); // 🚨 100% සම්පූර්ණයි
+      setVideoUploadProgress(100); 
       const { data } = supabase.storage.from('property-images').getPublicUrl(fileName);
       setUploadedVideo(data.publicUrl);
     } catch (error) {
       if (progressInterval) clearInterval(progressInterval);
       console.error("Video Upload Error:", error);
       alert("Video upload failed. Please try again.");
-      setVideoUploadProgress(0); // Error ආවොත් Progress එක 0 කරනවා
+      setVideoUploadProgress(0); 
     } finally {
       setUploadingMedia(false);
     }
   };
 
-  // 5. FINAL SUBMIT EKA (Database එකට Save කිරීම)
+  // --- SUBMIT FORM ---
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -154,18 +156,22 @@ const AddProperty = () => {
         return;
     }
 
+    if (selectedAudiences.length === 0) {
+        alert("Please select at least one Target Audience!");
+        return;
+    }
+
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
-      // Save to Properties table (STATUS EKA PENDING WIDIYATA YANAWA)
       const { error } = await supabase.from('properties').insert([{
         owner_id: user.id,
         title: formData.title,
         description: formData.description,
         price: parseFloat(formData.price),
         type: formData.type,
-        category: formData.category,
+        audiences: selectedAudiences, // 🚨 SAVING AS AN ARRAY NOW
         gender: formData.gender,
         tier: plan,
         district_id: parseInt(formData.district_id),
@@ -174,12 +180,12 @@ const AddProperty = () => {
         university_ids: selectedUniversities,
         images: uploadedPhotos,
         video_url: uploadedVideo,
-        status: 'pending' // 🚨 ADMIN APPROVE KARANA KAN PENDING
+        status: 'pending' 
       }]);
 
       if (error) throw error;
 
-      alert("Property submit is successful! Admin will review it shortly.");
+      alert("Property submitted successfully! It will be published once approved by an admin.");
       navigate('/owner-dashboard');
 
     } catch (error) {
@@ -229,33 +235,53 @@ const AddProperty = () => {
                         <label className="form-label small fw-bold">MONTHLY RENT (LKR)</label>
                         <input type="number" name="price" className="form-control" required onChange={handleInputChange} />
                     </div>
+
+                    {/* 🚨 UPDATED PROPERTY TYPES */}
                     <div className="col-md-6">
                         <label className="form-label small fw-bold">PROPERTY TYPE</label>
-                        <select name="type" className="form-control" onChange={handleInputChange}>
-                            <option value="Boarding">Boarding Place</option>
+                        <select name="type" className="form-control" onChange={handleInputChange} value={formData.type}>
+                            <option value="Boarding Place">Boarding Place</option>
                             <option value="Annex">Annex</option>
+                            <option value="Full House">Full House</option>
+                            <option value="Single Room">Single Room</option>
                             <option value="Apartment">Apartment</option>
                         </select>
                     </div>
-                    <div className="col-md-6">
-                        <label className="form-label small fw-bold">TARGET AUDIENCE</label>
-                        <select name="category" className="form-control" onChange={handleInputChange}>
-                            <option value="Student">Students</option>
-                            <option value="Working">Working Professionals</option>
-                            <option value="Tourist">Tourists</option>
-                        </select>
-                    </div>
+
                     <div className="col-md-6">
                         <label className="form-label small fw-bold">PREFERRED GENDER</label>
-                        <select name="gender" className="form-control" onChange={handleInputChange}>
+                        <select name="gender" className="form-control" onChange={handleInputChange} value={formData.gender}>
                             <option value="Any">Any</option>
                             <option value="Male">Male Only</option>
                             <option value="Female">Female Only</option>
                         </select>
                     </div>
+
+                    {/* 🚨 UPDATED TARGET AUDIENCE (CHECKBOXES) */}
+                    <div className="col-md-12">
+                        <label className="form-label small fw-bold">TARGET AUDIENCE (Select multiple if applicable)</label>
+                        <div className="d-flex flex-wrap gap-4 mt-1 bg-light p-3 rounded border">
+                            {['Student', 'Working', 'Tourist'].map(aud => (
+                                <div key={aud} className="form-check form-switch">
+                                    <input 
+                                        className="form-check-input" 
+                                        type="checkbox" 
+                                        id={`aud-${aud}`}
+                                        checked={selectedAudiences.includes(aud)}
+                                        onChange={() => handleAudienceToggle(aud)} 
+                                        style={{ cursor: 'pointer' }}
+                                    />
+                                    <label className="form-check-label" htmlFor={`aud-${aud}`} style={{ cursor: 'pointer' }}>
+                                        {aud === 'Working' ? 'Working Professionals' : aud + 's'}
+                                    </label>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
                     <div className="col-12">
                         <label className="form-label small fw-bold">DESCRIPTION</label>
-                        <textarea name="description" className="form-control" rows="3" onChange={handleInputChange}></textarea>
+                        <textarea name="description" className="form-control" rows="3" required onChange={handleInputChange}></textarea>
                     </div>
                 </div>
 
@@ -281,15 +307,17 @@ const AddProperty = () => {
                         <input type="text" name="address" className="form-control" required onChange={handleInputChange} />
                     </div>
                     
-                    {formData.category === 'Student' && (
+                    {/* 🚨 Show universities ONLY if 'Student' is selected in Target Audiences */}
+                    {selectedAudiences.includes('Student') && (
                         <div className="col-12 mt-3">
-                            <label className="form-label small fw-bold">NEARBY UNIVERSITIES</label>
-                            <div className="d-flex flex-wrap gap-3">
+                            <label className="form-label small fw-bold">NEARBY UNIVERSITIES (Optional)</label>
+                            <div className="d-flex flex-wrap gap-3 bg-light p-3 rounded border">
                                 {universities.map(uni => (
                                     <div key={uni.id} className="form-check">
                                         <input className="form-check-input" type="checkbox" id={`uni-${uni.id}`}
-                                            onChange={() => handleUniversityToggle(uni.id)} />
-                                        <label className="form-check-label small" htmlFor={`uni-${uni.id}`}>{uni.name}</label>
+                                            checked={selectedUniversities.includes(uni.id)}
+                                            onChange={() => handleUniversityToggle(uni.id)} style={{ cursor: 'pointer' }} />
+                                        <label className="form-check-label small" htmlFor={`uni-${uni.id}`} style={{ cursor: 'pointer' }}>{uni.name}</label>
                                     </div>
                                 ))}
                             </div>
@@ -312,13 +340,12 @@ const AddProperty = () => {
                     </div>
                 </div>
 
-                {/* 🚨 VIP VIDEO UPLOAD කොටස */}
+                {/* VIP VIDEO UPLOAD */}
                 {plan === 'vip' && (
-                    <div className="mb-4">
+                    <div className="mb-4 p-4 border rounded bg-light" style={{ borderColor: '#ffc107' }}>
                         <label className="form-label small fw-bold text-warning">VIP FEATURE: PROPERTY VIDEO (Max 20MB)</label>
                         <input type="file" className="form-control" accept="video/*" onChange={handleVideoUpload} disabled={uploadingMedia || uploadedVideo} />
                         
-                        {/* 🚨 අලුත් Progress Bar එක */}
                         {uploadingMedia && videoUploadProgress > 0 && videoUploadProgress < 100 && (
                             <div className="progress mt-2" style={{ height: '10px' }}>
                                 <div className="progress-bar progress-bar-striped progress-bar-animated bg-warning" 
@@ -332,7 +359,7 @@ const AddProperty = () => {
                     </div>
                 )}
 
-                <button type="submit" className="btn btn-dark w-100 py-3 fw-bold mt-3" disabled={loading || uploadingMedia}>
+                <button type="submit" className="btn btn-dark w-100 py-3 fw-bold mt-3 shadow-sm" disabled={loading || uploadingMedia}>
                     {loading ? "Submitting Ad..." : "Submit Ad for Review"}
                 </button>
             </form>

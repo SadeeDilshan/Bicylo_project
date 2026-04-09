@@ -11,67 +11,141 @@ const EditListing = ({ property, onCancel, onSave }) => {
     const [formData, setFormData] = useState({
         title: property.title,
         price: property.price,
-        // We use IDs now, but for display/edit we might want to keep it simple or expand it later.
         description: property.description
     });
 
-    const [currentImages, setCurrentImages] = useState(property.images || []);
+    // MEDIA STATES
+    const [existingImages, setExistingImages] = useState(property.images || []);
     const [newFiles, setNewFiles] = useState([]); 
     const [previewUrls, setPreviewUrls] = useState([]); 
+    
+    // Tracks which image is the cover { isNew: boolean, index: number }
+    const [coverIndex, setCoverIndex] = useState({ isNew: false, index: 0 });
+
+    // VIP Video States
+    const [currentVideo, setCurrentVideo] = useState(property.video_url || null);
+    const [newVideoFile, setNewVideoFile] = useState(null);
+    const [removeVideo, setRemoveVideo] = useState(false); // New state to track video removal
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
+    // --- Image Handlers ---
     const handleFileChange = (e) => {
         const files = Array.from(e.target.files);
         if (files.length > 0) {
             setNewFiles(files);
             setPreviewUrls(files.map(file => URL.createObjectURL(file)));
+        } else {
+            setNewFiles([]);
+            setPreviewUrls([]);
+        }
+        // Safety Reset: If files change, reset cover to the first existing image to prevent errors
+        setCoverIndex({ isNew: false, index: 0 });
+    };
+
+    const handleRemoveExistingImage = (indexToRemove) => {
+        setExistingImages(prev => prev.filter((_, i) => i !== indexToRemove));
+        // Adjust cover index if the removed image was the cover or came before it
+        if (!coverIndex.isNew) {
+            if (coverIndex.index === indexToRemove) setCoverIndex({ isNew: false, index: 0 });
+            else if (coverIndex.index > indexToRemove) setCoverIndex({ isNew: false, index: coverIndex.index - 1 });
         }
     };
 
+    // --- Video Handler ---
+    const handleVideoChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            if (file.size > 20 * 1024 * 1024) {
+                alert("Video must be less than 20MB!");
+                e.target.value = '';
+                return;
+            }
+            setNewVideoFile(file);
+            setRemoveVideo(false); // If they select a new video, cancel the removal request
+        }
+    };
+
+    // --- Submit Flow ---
     const handleSubmit = async (e) => {
         e.preventDefault();
+        
+        if (existingImages.length === 0 && newFiles.length === 0) {
+            alert("You must have at least one image!");
+            return;
+        }
+
         setLoading(true);
 
         try {
-            let finalImageUrls = currentImages;
+            const { data: { user } } = await supabase.auth.getUser();
+            const userId = user.id;
 
-            if (newFiles.length > 0) {
-                const uploadedUrls = [];
-                const userId = (await supabase.auth.getUser()).data.user.id;
+            // 1. Upload New Images
+            let uploadedUrls = [];
+            for (const file of newFiles) {
+                const fileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.\-]/g, '')}`;
+                const filePath = `${userId}/${fileName}`;
 
-                for (const file of newFiles) {
-                    const fileName = `${Date.now()}-${file.name}`;
-                    const filePath = `${userId}/${fileName}`;
+                const { error: uploadError } = await supabase.storage.from('property-images').upload(filePath, file);
+                if (uploadError) throw uploadError;
 
-                    const { error: uploadError } = await supabase.storage
-                        .from('property-images')
-                        .upload(filePath, file);
-
-                    if (uploadError) throw uploadError;
-
-                    const { data } = supabase.storage.from('property-images').getPublicUrl(filePath);
-                    uploadedUrls.push(data.publicUrl);
-                }
-                
-                finalImageUrls = uploadedUrls;
+                const { data } = supabase.storage.from('property-images').getPublicUrl(filePath);
+                uploadedUrls.push(data.publicUrl);
             }
 
-            const { error } = await supabase
-                .from('properties')
-                .update({
-                    title: formData.title,
-                    price: formData.price,
-                    description: formData.description,
-                    images: finalImageUrls
-                })
-                .eq('id', property.id);
+            // 2. Set Cover Image
+            let allUrls = [...existingImages, ...uploadedUrls];
+            let coverUrl = null;
 
+            if (coverIndex.isNew && uploadedUrls.length > coverIndex.index) {
+                coverUrl = uploadedUrls[coverIndex.index];
+            } else if (!coverIndex.isNew && existingImages.length > coverIndex.index) {
+                coverUrl = existingImages[coverIndex.index];
+            }
+
+            // Move the cover image to the front of the array (index 0)
+            if (coverUrl) {
+                allUrls = allUrls.filter(url => url !== coverUrl);
+                allUrls.unshift(coverUrl);
+            }
+
+            // 3. Handle Video Update/Removal (If VIP)
+            let finalVideoUrl = currentVideo;
+            
+            if (removeVideo) {
+                finalVideoUrl = null; // Owner explicitly removed the video
+            } else if (newVideoFile && property.tier === 'vip') {
+                const fileName = `${Date.now()}-video.${newVideoFile.name.split('.').pop()}`;
+                const filePath = `${userId}/${fileName}`;
+                
+                const { error: videoError } = await supabase.storage.from('property-images').upload(filePath, newVideoFile);
+                if (videoError) throw videoError;
+                
+                const { data } = supabase.storage.from('property-images').getPublicUrl(filePath);
+                finalVideoUrl = data.publicUrl;
+            }
+
+            // 4. Update Database
+            const updatePayload = {
+                title: formData.title,
+                price: formData.price,
+                description: formData.description,
+                images: allUrls,
+                status: 'pending', 
+                admin_comment: null 
+            };
+
+            if (property.tier === 'vip') {
+                updatePayload.video_url = finalVideoUrl;
+            }
+
+            const { error } = await supabase.from('properties').update(updatePayload).eq('id', property.id);
             if (error) throw error;
 
-            alert("Property Updated Successfully!");
+            alert("Property Updated Successfully! It is now pending admin review.");
             onSave(); 
 
         } catch (error) {
@@ -86,46 +160,105 @@ const EditListing = ({ property, onCancel, onSave }) => {
         <div className="card border-0 shadow-sm p-5" style={{ borderRadius: '20px' }}>
             <h3 className="fw-bold mb-4">Edit Property</h3>
             
+            {['rejected', 'revoked'].includes(property.status) && (
+                <div className="alert alert-danger border-0 small mb-4">
+                    <strong>{property.status === 'revoked' ? "Ad Revoked by Admin:" : "Ad Rejected by Admin:"}</strong><br/>
+                    <span className="text-dark">{property.admin_comment || "Please update your ad details."}</span><br/><br/>
+                    Editing and saving will resubmit this ad for admin approval.
+                </div>
+            )}
+
             <form onSubmit={handleSubmit}>
                 <div className="mb-3">
                     <label className="form-label fw-bold small">Title</label>
-                    <input name="title" type="text" className="form-control rounded-pill" value={formData.title} onChange={handleChange} />
+                    <input name="title" type="text" className="form-control rounded-pill" value={formData.title} onChange={handleChange} required />
                 </div>
                 <div className="row">
                     <div className="col-md-6 mb-3">
                         <label className="form-label fw-bold small">Price (LKR)</label>
-                        <input name="price" type="number" className="form-control rounded-pill" value={formData.price} onChange={handleChange} />
+                        <input name="price" type="number" className="form-control rounded-pill" value={formData.price} onChange={handleChange} required />
                     </div>
                 </div>
                 <div className="mb-3">
                     <label className="form-label fw-bold small">Description</label>
-                    <textarea name="description" className="form-control" rows="4" value={formData.description} onChange={handleChange}></textarea>
+                    <textarea name="description" className="form-control" rows="4" value={formData.description} onChange={handleChange} required></textarea>
                 </div>
 
+                {/* VIP VIDEO SECTION */}
+                {property.tier === 'vip' && (
+                    <div className="mb-4 p-4 border rounded bg-light" style={{ borderColor: '#ffc107' }}>
+                        <div className="d-flex justify-content-between align-items-center mb-2">
+                            <label className="form-label fw-bold small text-warning m-0">⭐ VIP FEATURE: PROPERTY VIDEO</label>
+                            
+                            {/* New Remove Video Button */}
+                            {currentVideo && !removeVideo && (
+                                <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => setRemoveVideo(true)}>
+                                    🗑 Remove Video
+                                </button>
+                            )}
+                            {removeVideo && (
+                                <span className="badge bg-danger">Video will be removed on save</span>
+                            )}
+                        </div>
+
+                        {currentVideo && !newVideoFile && !removeVideo && (
+                            <div className="mb-3">
+                                <video src={currentVideo} style={{ height: '150px', borderRadius: '10px' }} controls className="shadow-sm" />
+                            </div>
+                        )}
+
+                        <input type="file" accept="video/*" className="form-control" onChange={handleVideoChange} />
+                        {newVideoFile && <p className="small text-success mt-2 fw-bold">New video selected ✔️</p>}
+                        <small className="text-muted">Max size: 20MB. Uploading a new video will replace the current one.</small>
+                    </div>
+                )}
+
+                {/* IMAGE SECTION WITH COVER SELECTOR */}
                 <div className="mb-4">
-                    <label className="form-label fw-bold small">Images</label>
-                    {newFiles.length === 0 && (
-                        <div className="d-flex gap-2 overflow-auto mb-3">
-                            {currentImages.map((url, i) => (
-                                <img key={i} src={url} alt="current" style={{width: '80px', height: '80px', borderRadius: '10px', objectFit: 'cover', opacity: 0.7}} />
-                            ))}
-                        </div>
-                    )}
+                    <label className="form-label fw-bold small">Manage Images (Click "Make Cover" to set the main thumbnail)</label>
+                    
+                    <div className="d-flex flex-wrap gap-3 mb-3">
+                        {existingImages.map((url, i) => {
+                            const isCover = !coverIndex.isNew && coverIndex.index === i;
+                            return (
+                                <div key={`old-${i}`} className="position-relative" style={{ width: '120px' }}>
+                                    <img src={url} alt="current" style={{ width: '100%', height: '100px', borderRadius: '10px', objectFit: 'cover', border: isCover ? '3px solid #198754' : '1px solid #ddd' }} />
+                                    
+                                    <button type="button" className={`btn btn-sm w-100 mt-1 fw-bold ${isCover ? 'btn-success' : 'btn-light border'}`} onClick={() => setCoverIndex({ isNew: false, index: i })}>
+                                        {isCover ? '⭐ Cover' : 'Make Cover'}
+                                    </button>
+                                    
+                                    <button type="button" className="btn btn-sm btn-danger position-absolute top-0 end-0 m-1 rounded-circle" style={{ padding: '0px 6px' }} onClick={() => handleRemoveExistingImage(i)} title="Remove Image">
+                                        ×
+                                    </button>
+                                </div>
+                            );
+                        })}
+                        
+                        {previewUrls.map((url, i) => {
+                            const isCover = coverIndex.isNew && coverIndex.index === i;
+                            return (
+                                <div key={`new-${i}`} className="position-relative" style={{ width: '120px' }}>
+                                    <img src={url} alt="new preview" style={{ width: '100%', height: '100px', borderRadius: '10px', objectFit: 'cover', border: isCover ? '3px solid #198754' : '2px dashed #0d6efd' }} />
+                                    
+                                    <button type="button" className={`btn btn-sm w-100 mt-1 fw-bold ${isCover ? 'btn-success' : 'btn-light border'}`} onClick={() => setCoverIndex({ isNew: true, index: i })}>
+                                        {isCover ? '⭐ Cover' : 'Make Cover'}
+                                    </button>
+                                    <span className="badge bg-primary position-absolute top-0 start-0 m-1">New</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    <label className="form-label small text-muted">Upload Additional Images:</label>
                     <input type="file" multiple accept="image/*" onChange={handleFileChange} className="form-control mb-2" />
-                    {previewUrls.length > 0 && (
-                        <div className="d-flex gap-2 overflow-auto">
-                            {previewUrls.map((url, i) => (
-                                <img key={i} src={url} alt="new preview" style={{width: '80px', height: '80px', borderRadius: '10px', objectFit: 'cover', border: '2px solid #0d6efd'}} />
-                            ))}
-                        </div>
-                    )}
                 </div>
                 
                 <div className="d-flex mt-4">
-                    <button type="submit" className="btn btn-success rounded-pill px-5 me-3 fw-bold" disabled={loading}>
-                        {loading ? "Saving..." : "Save Changes"}
+                    <button type="submit" className="btn btn-dark rounded-pill px-5 me-3 fw-bold shadow-sm" disabled={loading}>
+                        {loading ? "Saving Changes..." : "Save & Resubmit"}
                     </button>
-                    <button type="button" className="btn btn-outline-secondary rounded-pill px-4" onClick={onCancel}>Cancel</button>
+                    <button type="button" className="btn btn-outline-secondary rounded-pill px-4" onClick={onCancel} disabled={loading}>Cancel</button>
                 </div>
             </form>
         </div>
@@ -146,22 +279,42 @@ const MyListings = ({ properties, onDelete, onEdit }) => {
                 </thead>
                 <tbody>
                     {properties.map((prop) => (
-                        <tr key={prop.id} style={{ background: prop.status === 'pending' ? '#fffbf0' : 'white' }}>
+                        <tr key={prop.id} style={{ background: prop.status === 'pending' ? '#fffbf0' : ['rejected', 'revoked'].includes(prop.status) ? '#fff5f5' : 'white' }}>
                             <td className="ps-4">
                                 <div className="d-flex align-items-center">
-                                    <div style={{ width: '50px', height: '50px', borderRadius: '10px', background: `url(${prop.images?.[0] || 'https://via.placeholder.com/50'}) center/cover`, marginRight: '15px', opacity: prop.status === 'pending' ? 0.6 : 1 }}></div>
+                                    <div style={{ width: '50px', height: '50px', borderRadius: '10px', background: `url(${prop.images?.[0] || 'https://via.placeholder.com/50'}) center/cover`, marginRight: '15px', opacity: prop.status === 'approved' ? 1 : 0.6 }}></div>
                                     <div>
                                         <div className="fw-bold text-dark">{prop.title}</div>
-                                        {/* Show District Name from joined table */}
                                         <div className="small text-muted">{prop.districts?.name || 'Unknown Dist'}</div>
                                     </div>
                                 </div>
                             </td>
                             <td>
-                                {prop.status === 'approved' ? (
+                                {prop.status === 'approved' && (
                                     <span className="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-pill">● Live</span>
-                                ) : (
+                                )}
+                                {prop.status === 'pending' && (
                                     <span className="badge bg-warning-subtle text-warning border border-warning-subtle px-3 py-2 rounded-pill">⏳ Pending Review</span>
+                                )}
+                                {prop.status === 'rejected' && (
+                                    <div>
+                                        <span className="badge bg-danger-subtle text-danger border border-danger-subtle px-3 py-2 rounded-pill mb-1">🚫 Rejected</span>
+                                        {prop.admin_comment && (
+                                            <div className="small text-danger fw-bold" style={{ maxWidth: '200px', whiteSpace: 'normal', lineHeight: '1.2' }}>
+                                                Reason: {prop.admin_comment}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                                {prop.status === 'revoked' && (
+                                    <div>
+                                        <span className="badge bg-danger-subtle text-danger border border-danger-subtle px-3 py-2 rounded-pill mb-1">⛔ Revoked</span>
+                                        {prop.admin_comment && (
+                                            <div className="small text-danger fw-bold" style={{ maxWidth: '200px', whiteSpace: 'normal', lineHeight: '1.2' }}>
+                                                Reason: {prop.admin_comment}
+                                            </div>
+                                        )}
+                                    </div>
                                 )}
                             </td>
                             <td className="fw-bold">{Number(prop.price).toLocaleString()} LKR</td>
@@ -195,7 +348,6 @@ const OwnerDashboard = () => {
             if (!session) { navigate('/login'); return; }
             const userId = session.user.id;
 
-            // Get Owner Status
             const { data: appData } = await supabase
                 .from('owner_applications')
                 .select('*')
@@ -203,20 +355,15 @@ const OwnerDashboard = () => {
                 .single();
             setOwnerData(appData);
 
-            // Get Properties
             fetchProperties(userId);
         };
         fetchData();
     }, [navigate]);
 
     const fetchProperties = async (userId) => {
-        // Updated to JOIN with districts table to get the name
         const { data } = await supabase
             .from('properties')
-            .select(`
-                *,
-                districts (name)
-            `)
+            .select(`*, districts (name)`)
             .eq('owner_id', userId)
             .order('created_at', { ascending: false });
         
@@ -228,12 +375,10 @@ const OwnerDashboard = () => {
     const handleDelete = async (id) => {
         if (window.confirm("Are you sure you want to delete this ad? This cannot be undone.")) {
             const { error } = await supabase.from('properties').delete().eq('id', id);
-            
             if (!error) {
                 setProperties(properties.filter(p => p.id !== id));
                 alert("Ad deleted successfully.");
             } else {
-                console.error("Delete failed:", error);
                 alert("Error deleting: " + error.message);
             }
         }
@@ -247,7 +392,6 @@ const OwnerDashboard = () => {
     const handleSaveEdit = () => {
         setEditingItem(null);
         setActiveView('listings');
-        // Refresh list to see changes
         if(ownerData) fetchProperties(ownerData.user_id);
     };
 

@@ -2,18 +2,18 @@ import React, { useState, useEffect } from 'react';
 import Navbar from '../components/Navbar';
 import DistrictSearch from '../components/DistrictSearch'; 
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../supabase'; // <--- 1. IMPORT SUPABASE
+import { supabase } from '../supabase';
 
 const WorkerListings = () => {
   const navigate = useNavigate();
 
   // --- STATE ---
-  const [selectedDistrictName, setSelectedDistrictName] = useState(null); // Keep name for display
+  const [selectedDistrictName, setSelectedDistrictName] = useState(null); 
   const [filterType, setFilterType] = useState("all"); 
   const [maxPrice, setMaxPrice] = useState(100000);
   
   const [listings, setListings] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // --- FETCH DATA LOGIC ---
   useEffect(() => {
@@ -21,24 +21,26 @@ const WorkerListings = () => {
       setLoading(true);
       
       try {
-        // Base Query: Get Approved Worker properties
-        // We filter by 'worker' audience AND approved status
+        const selectString = selectedDistrictName 
+            ? '*, districts!inner(name), cities(name)' 
+            : '*, districts(name), cities(name)';
+
+        
+          // 🚨 පරණ Code එක: .eq('category', 'Working')
+        // අලුත් Code එක: Array එක ඇතුලේ 'Working' තියෙනවද බලනවා
         let query = supabase
           .from('properties')
-          .select(`
-            *,
-            districts!inner(name),  // !inner performs an INNER JOIN to filter by district name
-            cities (name)
-          `)
-          .contains('audiences', ['worker'])
-          .or('status.eq.approved,status.eq.active,status.eq.published');
+          .select(selectString)
+          .contains('audiences', ['Working']) // <-- මේක තමයි වෙනස් වුණේ!
+          .in('status', ['approved', 'active', 'published']);// <-- මේ පේළිය තමයි හැදුවේ
+          
 
-        // 1. Filter by District Name (via the joined table)
+        // 1. Filter by District Name
         if (selectedDistrictName) {
            query = query.eq('districts.name', selectedDistrictName);
         }
 
-        // 2. Filter by Type (Annex, House, etc.)
+        // 2. Filter by Type
         if (filterType !== "all") {
           query = query.eq('type', filterType);
         }
@@ -52,9 +54,19 @@ const WorkerListings = () => {
 
         if (error) {
           console.error("Error loading listings:", error.message);
-        } else {
-          setListings(data || []);
-        }
+          throw error;
+        } 
+        
+        // Sort Data (VIP/Premium first)
+        const sortedData = (data || []).sort((a, b) => {
+            const tierOrder = { vip: 1, premium: 1, regular: 2, basic: 3 };
+            const tierA = a.tier ? a.tier.toLowerCase() : 'regular';
+            const tierB = b.tier ? b.tier.toLowerCase() : 'regular';
+            return (tierOrder[tierA] || 2) - (tierOrder[tierB] || 2);
+        });
+        
+        setListings(sortedData);
+        
       } catch (err) {
         console.error("Unexpected error:", err);
       } finally {
@@ -62,10 +74,7 @@ const WorkerListings = () => {
       }
     };
 
-    // Trigger fetch if a district is selected OR if it's the initial load (optional)
-    if (selectedDistrictName) {
-      fetchProperties();
-    }
+    fetchProperties();
   }, [selectedDistrictName, filterType, maxPrice]);
 
   // --- HELPER: Get Image ---
@@ -78,117 +87,113 @@ const WorkerListings = () => {
     <div style={{ background: '#f4f6f8', minHeight: '100vh' }}>
       <Navbar />
 
-      <div className="container" style={{ paddingTop: '120px', paddingBottom: '50px' }}>
-        
-        {/* --- VIEW 1: SELECT DISTRICT --- */}
-        {!selectedDistrictName ? (
-          <div className="text-center" style={{ maxWidth: '800px', margin: '0 auto', marginTop: '50px' }}>
-            <h1 className="fw-bold mb-3 display-4" data-aos="fade-down">Find Work Rentals</h1>
-            <p className="text-muted mb-5 lead" data-aos="fade-down" data-aos-delay="100">
-                Search your work district to find convenient annexes & houses.
-            </p>
-            
-            <div data-aos="zoom-in" data-aos-delay="200">
-                {/* DistrictSearch passes back the name string */}
-                <DistrictSearch onSelect={(distName) => setSelectedDistrictName(distName)} />
+      <div className="container" style={{ paddingTop: '100px', paddingBottom: '50px' }}>
+          
+        <div className="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h2 className="fw-bold m-0">Rentals in <span className="text-success">{selectedDistrictName || 'All Districts'}</span></h2>
+                <p className="text-muted m-0 small">Showing {listings.length} results</p>
             </div>
-
-            <p className="text-muted small mt-4">
-                Popular: Colombo, Gampaha, Kandy, Galle...
-            </p>
-          </div>
-        ) : (
-            
-          /* --- VIEW 2: DASHBOARD --- */
-          <div className="dashboard-view" data-aos="fade-up">
-            
-            <div className="d-flex justify-content-between align-items-center mb-4">
-                <div>
-                    <h2 className="fw-bold m-0">Rentals in <span className="text-success">{selectedDistrictName}</span></h2>
-                    <p className="text-muted m-0 small">Showing {listings.length} results</p>
-                </div>
-                <button className="btn btn-white border rounded-pill px-4 shadow-sm fw-bold" onClick={() => setSelectedDistrictName(null)}>
-                    ← BACK
+            {selectedDistrictName && (
+                <button className="btn btn-outline-danger rounded-pill px-4 shadow-sm fw-bold" onClick={() => setSelectedDistrictName(null)}>
+                    ✕ Clear District
                 </button>
-            </div>
+            )}
+        </div>
 
-            {/* MAP SECTION */}
-            <div className="map-container mb-5" style={{ height: '350px', borderRadius: '20px', overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.1)' }}>
-                <iframe 
-                    width="100%" 
-                    height="100%" 
-                    frameBorder="0" 
-                    scrolling="no" 
-                    src={`https://maps.google.com/maps?q=${encodeURIComponent(selectedDistrictName + " Sri Lanka")}&t=&z=11&ie=UTF8&iwloc=&output=embed`}
-                ></iframe>
-            </div>
+        <div className="row g-4">
+            {/* FILTERS SIDEBAR */}
+            <div className="col-md-4 col-lg-3">
+                <div className="card border-0 shadow-sm p-4 sticky-top" style={{ borderRadius: '20px', top: '100px', zIndex: 1 }}>
+                    <h5 className="fw-bold mb-3">Search Area</h5>
+                    
+                    {/* District Search Component */}
+                    <div className="mb-4">
+                        <DistrictSearch onSelect={(distName) => setSelectedDistrictName(distName)} />
+                    </div>
 
-            <div className="row">
-                {/* FILTERS */}
-                <div className="col-md-3">
-                    <div className="card border-0 shadow-sm p-4 sticky-top" style={{ borderRadius: '20px', top: '100px', zIndex: 1 }}>
-                        <h5 className="fw-bold mb-3">Filters</h5>
-                        <div className="mb-4">
-                            <label className="form-label fw-bold small text-muted">PROPERTY TYPE</label>
-                            <select 
-                                className="form-select rounded-pill bg-light border-0"
-                                value={filterType}
-                                onChange={(e) => setFilterType(e.target.value)}
-                            >
-                                <option value="all">All Types</option>
-                                <option value="annex">Annex</option>
-                                <option value="house">Full House</option>
-                                <option value="room">Single Room</option>
-                                <option value="apartment">Apartment</option>
-                            </select>
-                        </div>
-                        <div className="mb-2">
-                            <label className="form-label fw-bold small text-muted">MAX PRICE</label>
-                            <input 
-                                type="range" 
-                                className="form-range" 
-                                min="5000" max="100000" step="5000"
-                                value={maxPrice}
-                                onChange={(e) => setMaxPrice(e.target.value)}
-                            />
-                            <div className="d-flex justify-content-between text-muted small">
-                                <span>5k</span>
-                                <span className="fw-bold text-dark">{Number(maxPrice).toLocaleString()} LKR</span>
-                            </div>
+                    <hr className="opacity-25" />
+
+                    <h5 className="fw-bold mb-3">Filters</h5>
+                    <div className="mb-4">
+                        <label className="form-label fw-bold small text-muted">PROPERTY TYPE</label>
+                        <select 
+                            className="form-select rounded-pill bg-light border-0"
+                            value={filterType}
+                            onChange={(e) => setFilterType(e.target.value)}
+                        >
+                            <option value="all">All Types</option>
+                            <option value="annex">Annex</option>
+                            <option value="house">Full House</option>
+                            <option value="room">Single Room</option>
+                            <option value="apartment">Apartment</option>
+                        </select>
+                    </div>
+                    
+                    <div className="mb-2">
+                        <label className="form-label fw-bold small text-muted">MAX PRICE</label>
+                        <input 
+                            type="range" 
+                            className="form-range" 
+                            min="5000" max="100000" step="5000"
+                            value={maxPrice}
+                            onChange={(e) => setMaxPrice(e.target.value)}
+                        />
+                        <div className="d-flex justify-content-between text-muted small">
+                            <span>5k</span>
+                            <span className="fw-bold text-dark">{Number(maxPrice).toLocaleString()} LKR</span>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                {/* LISTINGS */}
-                <div className="col-md-9">
-                    {loading && <div className="text-center py-5"><div className="spinner-border text-primary"></div></div>}
+            {/* MAIN CONTENT AREA */}
+            <div className="col-md-8 col-lg-9">
+                
+                <div className="map-container mb-4" style={{ height: '300px', borderRadius: '20px', overflow: 'hidden', boxShadow: '0 5px 15px rgba(0,0,0,0.05)' }}>
+                    <iframe 
+                        title="District Location Map"
+                        width="100%" 
+                        height="100%" 
+                        frameBorder="0" 
+                        scrolling="no" 
+                        src={`https://maps.google.com/maps?q=${encodeURIComponent((selectedDistrictName || "Sri Lanka") + ", Sri Lanka")}&t=&z=${selectedDistrictName ? '12' : '7'}&ie=UTF8&iwloc=&output=embed`}
+                    ></iframe>
+                </div>
 
+                {loading ? (
+                    <div className="text-center py-5">
+                        <div className="spinner-border text-success" style={{ width: '3rem', height: '3rem' }}></div>
+                        <h5 className="mt-3 text-muted">Loading rentals...</h5>
+                    </div>
+                ) : (
                     <div className="row g-4">
-                        {!loading && listings.map((worker) => (
-                            <div className="col-md-6" key={worker.id}>
-                                <div className="card h-100 ios-card border-0" style={{ background: 'white', overflow: 'hidden' }}>
+                        {listings.map((worker) => (
+                            <div className="col-md-6 col-xl-4" key={worker.id}>
+                                <div className={`card h-100 ios-card shadow-sm ${['premium', 'vip'].includes(worker.tier?.toLowerCase()) ? 'border-success border-2' : 'border-0'}`} style={{ background: 'white', overflow: 'hidden', borderRadius: '15px' }}>
                                     
-                                    <div style={{ height: '220px', background: `url(${getDisplayImage(worker)}) center/cover`, position: 'relative' }}>
-                                        <span className="badge bg-success position-absolute m-3 shadow-sm text-uppercase">
+                                    <div style={{ height: '200px', background: `url(${getDisplayImage(worker)}) center/cover`, position: 'relative' }}>
+                                        {['premium', 'vip'].includes(worker.tier?.toLowerCase()) && (
+                                            <span className="badge bg-success text-white position-absolute m-2 shadow-sm">⭐ VIP</span>
+                                        )}
+                                        <span className="badge bg-dark text-white position-absolute bottom-0 start-0 m-2 shadow-sm text-uppercase">
                                             {worker.type}
                                         </span>
                                     </div>
 
-                                    <div className="card-body p-3">
-                                        <div className="d-flex justify-content-between">
-                                            <h5 className="fw-bold">{worker.title}</h5>
-                                            <span className="text-warning fw-bold">★ {worker.rating || "New"}</span>
+                                    <div className="card-body p-3 d-flex flex-column">
+                                        <div className="d-flex justify-content-between align-items-start mb-1">
+                                            <h6 className="fw-bold text-truncate mb-0" title={worker.title}>{worker.title}</h6>
                                         </div>
-                                        <p className="text-muted small mb-2">
-                                            📍 {worker.cities?.name}, {worker.districts?.name}
+                                        
+                                        <p className="text-muted small mb-2 text-truncate">
+                                            📍 {worker.cities?.name || worker.address}
                                         </p>
-                                        <p className="text-secondary small text-truncate">{worker.description}</p>
-                                        <h5 className="text-dark fw-bold">
-                                            {Number(worker.price).toLocaleString()} LKR <span className="text-muted small fw-normal">/ month</span>
+                                        
+                                        <h5 className="text-success fw-bold mt-auto mb-3">
+                                            {Number(worker.price || 0).toLocaleString()} LKR <span className="text-muted small fw-normal">/ mo</span>
                                         </h5>
-                                    </div>
 
-                                    <div className="card-footer bg-white border-0 pb-3 pt-0">
                                         <button 
                                             className="btn btn-outline-dark w-100 rounded-pill fw-bold"
                                             onClick={() => navigate(`/listing/${worker.id}`)}
@@ -200,17 +205,20 @@ const WorkerListings = () => {
                             </div>
                         ))}
 
-                        {!loading && listings.length === 0 && (
-                            <div className="col-12 text-center py-5">
-                                <h4 className="text-muted">No rentals found in this area.</h4>
-                                <button className="btn btn-outline-success rounded-pill mt-3" onClick={() => setSelectedDistrictName(null)}>Try another District</button>
+                        {listings.length === 0 && (
+                            <div className="col-12 text-center py-5 bg-white rounded-4 shadow-sm border">
+                                <h1 className="display-1 text-muted">🏢</h1>
+                                <h4 className="fw-bold text-dark mt-3">No rentals found.</h4>
+                                <p className="small text-muted">Try expanding your search area or price range.</p>
+                                <button className="btn btn-success rounded-pill mt-3 px-4 fw-bold" onClick={() => { setSelectedDistrictName(null); setFilterType('all'); setMaxPrice(100000); }}>
+                                    Reset Search
+                                </button>
                             </div>
                         )}
                     </div>
-                </div>
+                )}
             </div>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );
