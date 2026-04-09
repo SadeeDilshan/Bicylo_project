@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Navbar from '../components/Navbar';
 import { supabase } from '../supabase';
 import UniversitySearch from '../components/UniversitySearch'; 
@@ -12,9 +12,13 @@ const StudentListings = () => {
   const [selectedUniName, setSelectedUniName] = useState('All Locations'); 
   const [filterGender, setFilterGender] = useState("all"); 
   const [maxPrice, setMaxPrice] = useState(100000); 
-  
+  const [filterType, setFilterType] = useState("all"); 
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // 🚨 MAP STATES & REFS
+  const [mapQuery, setMapQuery] = useState(''); // Map එකේ පෙන්නන්න ඕන තැන
+  const mapRef = useRef(null); // Map එකට Auto-scroll කරන්න
 
   // --- FETCH DATA LOGIC ---
   useEffect(() => {
@@ -22,8 +26,6 @@ const StudentListings = () => {
       setLoading(true);
       
       try {
-        // 1. Base Query: Get Approved Ads
-        // 🚨 FIXED: Now uses the 'catogery' column with an array check
         let query = supabase
           .from('properties')
           .select(`
@@ -31,23 +33,13 @@ const StudentListings = () => {
             districts (name),
             cities (name)
           `)
-          .contains('audiences', ['Student']) // <-- 'audiences' check here!
+          .ilike('category', '%Student%') 
           .in('status', ['approved', 'active', 'published']);
 
-        // 2. Filter by University ID (Only if selected)
-        if (selectedUniId) {
-          query = query.contains('university_ids', [selectedUniId]);
-        }
-
-        // 3. Filter by Gender
-        if (filterGender !== "all") {
-          query = query.eq('gender', filterGender);
-        }
-
-        // 4. Filter by Price
-        if (maxPrice) {
-          query = query.lte('price', maxPrice);
-        }
+        if (selectedUniId) query = query.contains('university_ids', [selectedUniId]);
+        if (filterType !== "all") query = query.eq('type', filterType);
+        if (filterGender !== "all") query = query.eq('gender', filterGender);
+        if (maxPrice) query = query.lte('price', maxPrice);
 
         const { data, error } = await query;
 
@@ -56,7 +48,6 @@ const StudentListings = () => {
           throw error;
         } 
         
-        // Sort Data (VIP/Premium first)
         const sortedData = (data || []).sort((a, b) => {
             const tierOrder = { vip: 1, premium: 1, regular: 2, basic: 3 }; 
             const tierA = a.tier ? a.tier.toLowerCase() : 'regular';
@@ -73,8 +64,8 @@ const StudentListings = () => {
       }
     };
 
-    fetchProperties(); // Fetch immediately on page load
-  }, [selectedUniId, filterGender, maxPrice]);
+    fetchProperties();
+  }, [selectedUniId, filterGender, filterType, maxPrice]);
 
   const getDisplayImage = (item) => {
     if (item.images && item.images.length > 0) return item.images[0];
@@ -85,15 +76,31 @@ const StudentListings = () => {
       if (!id) {
           setSelectedUniId(null);
           setSelectedUniName('All Locations');
+          setMapQuery(''); // Clear map when cleared
           return;
       }
       setSelectedUniId(id);
       
       try {
           const { data, error } = await supabase.from('universities').select('name').eq('id', id).single();
-          if (data) setSelectedUniName(data.name);
+          if (data) {
+              setSelectedUniName(data.name);
+              // 🚨 Campus එක තේරුවම Map එකේ ඒ Campus එක හොයන්න දෙනවා
+              setMapQuery(`${data.name}, Sri Lanka`); 
+          }
       } catch (error) {
           console.error("Error fetching university name:", error);
+      }
+  };
+
+  // 🚨 කාඩ් එකේ බොත්තම එබුවම Map එක අදාළ බෝඩිමට Update කරලා Scroll කරනවා
+  const handleShowOnMap = (lat, lng) => {
+      setMapQuery(`${lat},${lng}`);
+      if (mapRef.current) {
+          // Map එක තියෙන තැනට Smooth විදිහට පල්ලෙහාට/උඩට යනවා
+          const yOffset = -120; // Navbar එකට ඉඩ තියන්න
+          const y = mapRef.current.getBoundingClientRect().top + window.pageYOffset + yOffset;
+          window.scrollTo({ top: y, behavior: 'smooth' });
       }
   };
 
@@ -114,6 +121,24 @@ const StudentListings = () => {
                 </button>
             )}
         </div>
+
+        {/* 🚨 THE DYNAMIC MAP SECTION */}
+        {selectedUniId && mapQuery && (
+            <div 
+                ref={mapRef} 
+                className="w-100 mb-4 bg-white p-2 shadow-sm" 
+                style={{ height: '400px', borderRadius: '20px' }}
+            >
+                <iframe 
+                    title="Dynamic Location Map"
+                    width="100%" 
+                    height="100%" 
+                    frameBorder="0" 
+                    style={{ borderRadius: '15px' }}
+                    src={`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&t=&z=15&ie=UTF8&iwloc=&output=embed`}
+                ></iframe>
+            </div>
+        )}
 
         <div className="row g-4">
             {/* FILTERS SIDEBAR */}
@@ -136,9 +161,24 @@ const StudentListings = () => {
                             onChange={(e) => setFilterGender(e.target.value)}
                         >
                             <option value="all">Any Gender</option>
-                            <option value="male">Boys Only</option>
-                            <option value="female">Girls Only</option>
-                            <option value="mixed">Mixed</option>
+                            <option value="Male">Boys Only</option>
+                            <option value="Female">Girls Only</option>
+                            <option value="Mixed">Mixed</option>
+                        </select>
+                    </div>
+                    <div className="mb-4">
+                        <label className="form-label fw-bold small text-muted">PROPERTY TYPE</label>
+                        <select 
+                            className="form-select rounded-pill bg-light border-0"
+                            value={filterType}
+                            onChange={(e) => setFilterType(e.target.value)}
+                        >
+                            <option value="all">All Types</option>
+                            <option value="Boarding Place">Boarding</option>
+                            <option value="Annex">Annex</option>
+                            <option value="Full House">Full House</option>
+                            <option value="Single Room">Single Room</option>
+                            <option value="Apartment">Apartment</option>
                         </select>
                     </div>
 
@@ -181,7 +221,7 @@ const StudentListings = () => {
                                             <span className="badge bg-warning text-dark position-absolute m-2 shadow-sm">⭐ VIP</span>
                                         )}
                                         <span className="badge bg-dark text-white position-absolute bottom-0 start-0 m-2 shadow-sm">
-                                            {boarding.gender === 'male' ? '♂ Boys' : boarding.gender === 'female' ? '♀ Girls' : '⚥ Mixed'}
+                                            {boarding.gender === 'Male' ? '♂ Boys' : boarding.gender === 'Female' ? '♀ Girls' : '⚥ Mixed'}
                                         </span>
                                     </div>
 
@@ -195,6 +235,16 @@ const StudentListings = () => {
                                             {Number(boarding.price || 0).toLocaleString()} LKR 
                                             <span className="text-muted small fw-normal"> / mo</span>
                                         </h5>
+
+                                        {/* 🚨 අලුත් Map බොත්තම (Coordinates තියෙනවා නම් විතරක් පෙන්වයි) */}
+                                        {boarding.latitude && boarding.longitude && (
+                                            <button 
+                                                className="btn btn-sm btn-outline-success w-100 rounded-pill mb-2 fw-bold"
+                                                onClick={() => handleShowOnMap(boarding.latitude, boarding.longitude)}
+                                            >
+                                                📍 Show on Map
+                                            </button>
+                                        )}
 
                                         <button 
                                             className="btn btn-outline-dark w-100 rounded-pill fw-bold"
@@ -214,7 +264,7 @@ const StudentListings = () => {
                                 <p className="small text-muted">No approved ads match your search criteria right now.</p>
                                 <button 
                                     className="btn btn-primary rounded-pill mt-3 px-4 fw-bold" 
-                                    onClick={() => {setFilterGender("all"); setMaxPrice(100000); handleUniSelect(null);}}
+                                    onClick={() => {setFilterGender("all"); setFilterType("all"); setMaxPrice(100000); handleUniSelect(null);}}
                                 >
                                     Reset All Filters
                                 </button>

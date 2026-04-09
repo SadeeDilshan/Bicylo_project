@@ -3,10 +3,12 @@ import Navbar from '../components/Navbar';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import imageCompression from 'browser-image-compression';
+import MultiUniversitySelect from '../components/MultiUniversitySelect'; 
 
 const AddProperty = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [gettingLocation, setGettingLocation] = useState(false); // 🚨 අලුත් State එක Location ගන්නකොට Loading පෙන්නන්න
 
   // --- REFERENCE DATA STATES ---
   const [districts, setDistricts] = useState([]);
@@ -18,10 +20,10 @@ const AddProperty = () => {
   const [plan, setPlan] = useState('basic'); 
   const [formData, setFormData] = useState({
     title: '', description: '', price: '', type: 'Boarding Place', gender: 'Any',
-    district_id: '', city_id: '', address: ''
+    district_id: '', city_id: '', address: '',
+    latitude: '', longitude: '' // 🚨 අලුත් Fields 2
   });
   
-  // 🚨 UPDATED: Audiences is now an array to allow multiple selections
   const [selectedAudiences, setSelectedAudiences] = useState(['Student']); 
   const [selectedUniversities, setSelectedUniversities] = useState([]);
 
@@ -33,9 +35,9 @@ const AddProperty = () => {
 
   useEffect(() => {
     const fetchReferenceData = async () => {
-      const { data: distData } = await supabase.from('districts').select('*');
-      const { data: cityData } = await supabase.from('cities').select('*');
-      const { data: uniData } = await supabase.from('universities').select('*');
+      const { data: distData } = await supabase.from('districts').select('*').order('name');
+      const { data: cityData } = await supabase.from('cities').select('*').order('name');
+      const { data: uniData } = await supabase.from('universities').select('*').order('name');
       
       if (distData) setDistricts(distData);
       if (cityData) setCities(cityData);
@@ -55,16 +57,34 @@ const AddProperty = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // 🚨 NEW: Handle Multiple Audience Selections
   const handleAudienceToggle = (audience) => {
     setSelectedAudiences(prev => 
       prev.includes(audience) ? prev.filter(a => a !== audience) : [...prev, audience]
     );
   };
 
-  const handleUniversityToggle = (uniId) => {
-    setSelectedUniversities(prev => 
-      prev.includes(uniId) ? prev.filter(id => id !== uniId) : [...prev, uniId]
+  // 🚨 --- GET CURRENT LOCATION ---
+  const handleGetLocation = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      return;
+    }
+
+    setGettingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setFormData(prev => ({
+          ...prev,
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        }));
+        setGettingLocation(false);
+      },
+      (error) => {
+        console.error("Error getting location:", error);
+        alert("Unable to retrieve your location. Please ensure location permissions are enabled in your browser.");
+        setGettingLocation(false);
+      }
     );
   };
 
@@ -171,12 +191,14 @@ const AddProperty = () => {
         description: formData.description,
         price: parseFloat(formData.price),
         type: formData.type,
-        audiences: selectedAudiences, // 🚨 SAVING AS AN ARRAY NOW
+        category: selectedAudiences, 
         gender: formData.gender,
         tier: plan,
         district_id: parseInt(formData.district_id),
         city_id: parseInt(formData.city_id),
         address: formData.address,
+        latitude: formData.latitude ? parseFloat(formData.latitude) : null, // 🚨 Save Latitude
+        longitude: formData.longitude ? parseFloat(formData.longitude) : null, // 🚨 Save Longitude
         university_ids: selectedUniversities,
         images: uploadedPhotos,
         video_url: uploadedVideo,
@@ -236,7 +258,6 @@ const AddProperty = () => {
                         <input type="number" name="price" className="form-control" required onChange={handleInputChange} />
                     </div>
 
-                    {/* 🚨 UPDATED PROPERTY TYPES */}
                     <div className="col-md-6">
                         <label className="form-label small fw-bold">PROPERTY TYPE</label>
                         <select name="type" className="form-control" onChange={handleInputChange} value={formData.type}>
@@ -254,10 +275,10 @@ const AddProperty = () => {
                             <option value="Any">Any</option>
                             <option value="Male">Male Only</option>
                             <option value="Female">Female Only</option>
+                            <option value="Mixed">Mixed</option>
                         </select>
                     </div>
 
-                    {/* 🚨 UPDATED TARGET AUDIENCE (CHECKBOXES) */}
                     <div className="col-md-12">
                         <label className="form-label small fw-bold">TARGET AUDIENCE (Select multiple if applicable)</label>
                         <div className="d-flex flex-wrap gap-4 mt-1 bg-light p-3 rounded border">
@@ -306,21 +327,44 @@ const AddProperty = () => {
                         <label className="form-label small fw-bold">ADDRESS</label>
                         <input type="text" name="address" className="form-control" required onChange={handleInputChange} />
                     </div>
+
+                    {/* 🚨 MAP COORDINATES SECTION */}
+                    <div className="col-12 mt-2">
+                        <label className="form-label small fw-bold text-muted">MAP COORDINATES (OPTIONAL)</label>
+                        <div className="d-flex gap-2 mb-2">
+                            <input 
+                                type="number" step="any" name="latitude" className="form-control bg-light" 
+                                placeholder="Latitude (e.g. 6.9271)" value={formData.latitude} onChange={handleInputChange} 
+                            />
+                            <input 
+                                type="number" step="any" name="longitude" className="form-control bg-light" 
+                                placeholder="Longitude (e.g. 79.8612)" value={formData.longitude} onChange={handleInputChange} 
+                            />
+                        </div>
+                        <button 
+                            type="button" 
+                            className="btn btn-outline-primary btn-sm rounded-pill fw-bold"
+                            onClick={handleGetLocation}
+                            disabled={gettingLocation}
+                        >
+                            {gettingLocation ? "📍 Getting location..." : "📍 Get My Current Location"}
+                        </button>
+                        <p className="text-muted small mt-2">
+                            Click the button if you are currently at the property, or enter coordinates manually from Google Maps.
+                        </p>
+                    </div>
                     
-                    {/* 🚨 Show universities ONLY if 'Student' is selected in Target Audiences */}
+                    {/* Multi-Select University Component */}
                     {selectedAudiences.includes('Student') && (
                         <div className="col-12 mt-3">
                             <label className="form-label small fw-bold">NEARBY UNIVERSITIES (Optional)</label>
-                            <div className="d-flex flex-wrap gap-3 bg-light p-3 rounded border">
-                                {universities.map(uni => (
-                                    <div key={uni.id} className="form-check">
-                                        <input className="form-check-input" type="checkbox" id={`uni-${uni.id}`}
-                                            checked={selectedUniversities.includes(uni.id)}
-                                            onChange={() => handleUniversityToggle(uni.id)} style={{ cursor: 'pointer' }} />
-                                        <label className="form-check-label small" htmlFor={`uni-${uni.id}`} style={{ cursor: 'pointer' }}>{uni.name}</label>
-                                    </div>
-                                ))}
-                            </div>
+                            <p className="text-muted small mb-2">Search and select campuses close to your property to attract more students.</p>
+                            
+                            <MultiUniversitySelect 
+                              availableUniversities={universities} 
+                              selectedIds={selectedUniversities} 
+                              onChange={setSelectedUniversities} 
+                            />
                         </div>
                     )}
                 </div>

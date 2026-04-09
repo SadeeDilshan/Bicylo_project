@@ -66,12 +66,7 @@ const Portals = () => {
                             <h3 className="card-title fw-bold">Students</h3>
                             <p className="card-text small mb-1">Affordable boardings & shared rooms.</p>
                             
-                            {/* DYNAMIC COUNT DISPLAY */}
-                            {!loading && (
-                                <p className="small text-primary fw-bold mb-3">
-                                    {counts.student} listings available
-                                </p>
-                            )}
+                            
 
                             <span className="btn btn-sm btn-ios-pill">Find Boarding</span> 
                         </div>
@@ -89,12 +84,7 @@ const Portals = () => {
                             <h3 className="card-title fw-bold">Workers</h3>
                             <p className="card-text small mb-1">Convenient annexes & apartments.</p>
                             
-                            {/* DYNAMIC COUNT DISPLAY */}
-                            {!loading && (
-                                <p className="small text-success fw-bold mb-3">
-                                    {counts.worker} listings available
-                                </p>
-                            )}
+                           
 
                             <span className="btn btn-sm btn-ios-pill">Find Rentals</span>
                         </div>
@@ -112,12 +102,7 @@ const Portals = () => {
                             <h3 className="card-title fw-bold">Travelers</h3>
                             <p className="card-text small mb-1">Luxury villas & holiday homes.</p>
                             
-                            {/* DYNAMIC COUNT DISPLAY */}
-                            {!loading && (
-                                <p className="small text-warning fw-bold mb-3">
-                                    {counts.traveler} listings available
-                                </p>
-                            )}
+                           
 
                             <span className="btn btn-sm btn-ios-pill">Book Stay</span>
                         </div>

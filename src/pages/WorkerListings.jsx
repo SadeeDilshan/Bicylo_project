@@ -11,7 +11,7 @@ const WorkerListings = () => {
   const [selectedDistrictName, setSelectedDistrictName] = useState(null); 
   const [filterType, setFilterType] = useState("all"); 
   const [maxPrice, setMaxPrice] = useState(100000);
-  
+  const [filterGender, setFilterGender] = useState("all");
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -38,6 +38,9 @@ const WorkerListings = () => {
         // 1. Filter by District Name
         if (selectedDistrictName) {
            query = query.eq('districts.name', selectedDistrictName);
+        }
+        if (filterGender !== "all") {
+          query = query.eq('gender', filterGender);
         }
 
         // 2. Filter by Type
@@ -75,7 +78,7 @@ const WorkerListings = () => {
     };
 
     fetchProperties();
-  }, [selectedDistrictName, filterType, maxPrice]);
+  }, [selectedDistrictName, filterType, filterGender , maxPrice]);
 
   // --- HELPER: Get Image ---
   const getDisplayImage = (item) => {
@@ -115,6 +118,21 @@ const WorkerListings = () => {
                     <hr className="opacity-25" />
 
                     <h5 className="fw-bold mb-3">Filters</h5>
+
+                    <div className="mb-4">
+                        <label className="form-label fw-bold small text-muted">GENDER</label>
+                        <select 
+                            className="form-select rounded-pill bg-light border-0"
+                            value={filterGender}
+                            onChange={(e) => setFilterGender(e.target.value)}
+                        >
+                            <option value="all">Any Gender</option>
+                            <option value="Male">Boys Only</option>
+                            <option value="Female">Girls Only</option>
+                            <option value="Mixed">Mixed</option>
+                        </select>
+                    </div>
+
                     <div className="mb-4">
                         <label className="form-label fw-bold small text-muted">PROPERTY TYPE</label>
                         <select 
@@ -123,10 +141,11 @@ const WorkerListings = () => {
                             onChange={(e) => setFilterType(e.target.value)}
                         >
                             <option value="all">All Types</option>
-                            <option value="annex">Annex</option>
-                            <option value="house">Full House</option>
-                            <option value="room">Single Room</option>
-                            <option value="apartment">Apartment</option>
+                            <option value="Boarding Place">Boarding</option>
+                            <option value="Annex">Annex</option>
+                            <option value="Full House">Full House</option>
+                            <option value="Single Room">Single Room</option>
+                            <option value="Apartment">Apartment</option>
                         </select>
                     </div>
                     

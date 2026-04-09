@@ -1,20 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { supabase } from '../supabase'; // <--- 1. Import Supabase
+import { supabase } from '../supabase';
 
 const UniversitySearch = ({ onSelect }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [universities, setUniversities] = useState([]); // Stores objects: {id, name, nicknames}
+  const [universities, setUniversities] = useState([]); 
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const wrapperRef = useRef(null);
 
-  // --- 2. FETCH UNIVERSITIES FROM DB ---
+  // --- 1. FETCH UNIVERSITIES FROM DB ---
   useEffect(() => {
     const fetchUniversities = async () => {
       try {
         const { data, error } = await supabase
-          .from('universities') // <--- New Table
-          .select('id, name, nicknames')
+          .from('universities')
+          .select('id, name, nicknames') // 🚨 nicknames ගත්තා
           .order('name');
 
         if (error) throw error;
@@ -28,20 +28,24 @@ const UniversitySearch = ({ onSelect }) => {
     fetchUniversities();
   }, []);
 
-  // --- 3. SMART FILTER LOGIC (Name + Nicknames) ---
+  // --- 2. SMART FILTER LOGIC (Name + Nicknames) ---
   useEffect(() => {
     if (searchTerm.trim() === '') {
-      // If empty, show nothing (or you can show top 5 popular ones)
-      setSuggestions([]);
+      setSuggestions(universities); // හිස් නම් ඔක්කොම පෙන්නනවා (onFocus එකට ලේසි වෙන්න)
     } else {
-      const lowerSearch = searchTerm.toLowerCase();
+      const lowerSearch = searchTerm.toLowerCase().trim();
       
       const filtered = universities.filter((uni) => {
-        // Check Name
-        if (uni.name.toLowerCase().includes(lowerSearch)) return true;
+        // 1. ප්‍රධාන නමෙන් (name) Check කරනවා
+        if (uni.name?.toLowerCase().includes(lowerSearch)) return true;
         
-        // Check Nicknames (Array)
-        if (uni.nicknames && uni.nicknames.some(nick => nick.toLowerCase().includes(lowerSearch))) return true;
+        // 2. Nicknames වලින් Check කරනවා (Array එකක්ද කියලා ෂුවර් කරගෙන)
+        if (uni.nicknames && Array.isArray(uni.nicknames)) {
+            const hasNicknameMatch = uni.nicknames.some(nick => 
+                nick?.toLowerCase().includes(lowerSearch)
+            );
+            if (hasNicknameMatch) return true;
+        }
         
         return false;
       });
@@ -50,7 +54,7 @@ const UniversitySearch = ({ onSelect }) => {
     }
   }, [searchTerm, universities]);
 
-  // --- CLICK OUTSIDE HANDLER ---
+  // --- 3. CLICK OUTSIDE HANDLER ---
   useEffect(() => {
     function handleClickOutside(event) {
       if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
@@ -62,9 +66,9 @@ const UniversitySearch = ({ onSelect }) => {
   }, [wrapperRef]);
 
   const handleSelect = (uni) => {
-    setSearchTerm(uni.name); // Show the official name in the input
+    setSearchTerm(uni.name); // නිල නම Input එකට දානවා
     setShowSuggestions(false);
-    if (onSelect) onSelect(uni.id); // <--- RETURN THE ID, NOT THE NAME (Important for DB)
+    if (onSelect) onSelect(uni.id); // ID එක යවනවා
   };
 
   return (
@@ -73,23 +77,19 @@ const UniversitySearch = ({ onSelect }) => {
         <span className="input-group-text bg-white border-0 ps-4">🔍</span>
         <input
           type="text"
-          className="form-control border-0"
-          placeholder="Type your university (e.g., NSBM, SLIIT)..."
+          className="form-control border-0 shadow-none"
+          placeholder="Type your university (e.g., NSBM, SLIIT, Japura)..."
           value={searchTerm}
           onChange={(e) => {
             setSearchTerm(e.target.value);
             setShowSuggestions(true);
           }}
-          onFocus={() => {
-             // Show all if empty on focus
-             if(searchTerm === '') setSuggestions(universities);
-             setShowSuggestions(true);
-          }}
+          onFocus={() => setShowSuggestions(true)}
         />
         {searchTerm && (
           <button 
             className="btn bg-white border-0 text-muted" 
-            onClick={() => { setSearchTerm(''); onSelect(null); }}
+            onClick={() => { setSearchTerm(''); onSelect(null); setShowSuggestions(false); }}
           >
             ✕
           </button>
@@ -108,9 +108,9 @@ const UniversitySearch = ({ onSelect }) => {
             >
               🎓 <strong>{uni.name}</strong>
               {/* Show nickname match if relevant */}
-              {uni.nicknames && uni.nicknames.length > 0 && (
-                 <small className="text-muted d-block ms-4" style={{fontSize: '0.8rem'}}>
-                    Also known as: {uni.nicknames.join(', ')}
+              {uni.nicknames && Array.isArray(uni.nicknames) && uni.nicknames.length > 0 && (
+                 <small className="text-primary fw-bold d-block ms-4 mt-1" style={{fontSize: '0.8rem'}}>
+                   💡 aka {uni.nicknames.join(', ')}
                  </small>
               )}
             </li>
@@ -119,8 +119,8 @@ const UniversitySearch = ({ onSelect }) => {
       )}
       
       {showSuggestions && searchTerm && suggestions.length === 0 && (
-        <div className="position-absolute w-100 text-center bg-white p-3 shadow mt-2 rounded text-muted">
-           No university found with that name.
+        <div className="position-absolute w-100 text-center bg-white p-3 shadow mt-2 rounded-4 text-muted" style={{ zIndex: 1000 }}>
+            No university found with that name.
         </div>
       )}
     </div>
