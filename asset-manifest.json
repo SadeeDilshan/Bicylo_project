@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/Bycylo_project/static/css/main.08a85ff4.css",
+    "main.js": "/Bycylo_project/static/js/main.1e19f968.js",
+    "static/js/488.5276a125.chunk.js": "/Bycylo_project/static/js/488.5276a125.chunk.js",
+    "index.html": "/Bycylo_project/index.html",
+    "main.08a85ff4.css.map": "/Bycylo_project/static/css/main.08a85ff4.css.map",
+    "main.1e19f968.js.map": "/Bycylo_project/static/js/main.1e19f968.js.map",
+    "488.5276a125.chunk.js.map": "/Bycylo_project/static/js/488.5276a125.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.08a85ff4.css",
+    "static/js/main.1e19f968.js"
+  ]
+}
